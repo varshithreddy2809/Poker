@@ -28,6 +28,29 @@ public class GameRound {
     @Column(name = "round_status", nullable = false, length = 20)
     private GameRoundStatus roundStatus = GameRoundStatus.PENDING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private GamePhase phase = GamePhase.CHOOSING_VISIBILITY;
+
+    @Column(name = "current_bet", nullable = false)
+    private Long currentBet = 0L;
+
+    @Column(nullable = false)
+    private Long pot = 0L;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "current_turn_game_player_id")
+    private GamePlayer currentTurnGamePlayer;
+
+    @Column(name = "visibility_deadline")
+    private LocalDateTime visibilityDeadline;
+
+    @Column(name = "turn_deadline")
+    private LocalDateTime turnDeadline;
+
+    @Column(name = "forced_same_turns_remaining", nullable = false)
+    private Byte forcedSameTurnsRemaining = 0;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "winner_player_id")
     private Player winnerPlayer;

@@ -28,9 +28,8 @@ public class GameTable {
     @Column(name = "table_name", nullable = false, length = 100)
     private String tableName;
 
-    /** Always zero in the friendly-game flow. Betting is intentionally absent. */
     @Column(name = "entry_bet", nullable = false)
-    private Long entryBet = 0L;
+    private Long entryBet;
 
     @Column(name = "max_players", nullable = false)
     private Byte maxPlayers;

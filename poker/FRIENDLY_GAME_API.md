@@ -61,6 +61,13 @@ Only the host may start the round. The server creates and shuffles a fresh
 52-card deck, deals three unique cards to each seated player, and returns a
 `roundId`.
 
+Players who joined the lobby can discover the current round after the table
+switches to `IN_GAME`:
+
+`GET /api/tables/{tableId}/rounds/active`
+
+This returns round metadata only; it never returns card data.
+
 ## 5. View only your own hand
 
 `GET /api/rounds/{roundId}/players/{yourPlayerId}/hand`

@@ -44,20 +44,56 @@ public class GameTableController {
         return friendlyTeenPattiService.startRound(tableId, request);
     }
 
+    @GetMapping("/tables/{tableId}/rounds/active")
+    public RoundResponse getActiveRound(@PathVariable Long tableId) {
+        return friendlyTeenPattiService.getActiveRound(tableId);
+    }
+
     @GetMapping("/rounds/{roundId}/players/{playerId}/hand")
     public MyHandResponse getMyHand(@PathVariable Long roundId, @PathVariable Long playerId, Authentication authentication) {
         requireCaller(authentication, playerId);
         return friendlyTeenPattiService.getMyHand(roundId, playerId);
     }
 
-    @PostMapping("/rounds/{roundId}/showdown")
-    public ShowdownResponse showdown(@PathVariable Long roundId, @Valid @RequestBody ShowdownRequest request,
-                                     Authentication authentication) {
-        requireCaller(authentication, request.hostPlayerId());
-        return friendlyTeenPattiService.showdown(roundId, request);
+    @PostMapping("/rounds/{roundId}/visibility")
+    public RoundResponse chooseVisibility(@PathVariable Long roundId, @Valid @RequestBody ChooseVisibilityRequest request,
+                                          Authentication authentication) {
+        return friendlyTeenPattiService.chooseVisibility(roundId, currentPlayerId(authentication), request);
+    }
+
+    @PostMapping("/rounds/{roundId}/see-cards")
+    public RoundResponse seeCards(@PathVariable Long roundId, Authentication authentication) {
+        return friendlyTeenPattiService.seeCards(roundId, currentPlayerId(authentication));
+    }
+
+    @PostMapping("/rounds/{roundId}/actions")
+    public RoundResponse takeTurn(@PathVariable Long roundId, @Valid @RequestBody TurnActionRequest request,
+                                  Authentication authentication) {
+        return friendlyTeenPattiService.takeTurn(roundId, currentPlayerId(authentication), request);
+    }
+
+    @PostMapping("/rounds/{roundId}/leave")
+    public RoundResponse leaveRound(@PathVariable Long roundId, Authentication authentication) {
+        return friendlyTeenPattiService.leaveRound(roundId, currentPlayerId(authentication));
+    }
+
+    @PostMapping("/rounds/{roundId}/side-shows")
+    public RoundResponse requestSideShow(@PathVariable Long roundId, @Valid @RequestBody SideShowRequest request,
+                                         Authentication authentication) {
+        return friendlyTeenPattiService.requestSideShow(roundId, currentPlayerId(authentication), request);
+    }
+
+    @PostMapping("/rounds/{roundId}/side-shows/{sideShowId}/response")
+    public RoundResponse respondToSideShow(@PathVariable Long roundId, @PathVariable Long sideShowId,
+                                           @Valid @RequestBody SideShowResponseRequest request, Authentication authentication) {
+        return friendlyTeenPattiService.respondToSideShow(roundId, sideShowId, currentPlayerId(authentication), request);
     }
 
     private void requireCaller(Authentication authentication, Long playerId) {
         gameTableService.requireCaller(authentication.getName(), playerId);
+    }
+
+    private Long currentPlayerId(Authentication authentication) {
+        return gameTableService.playerIdFor(authentication.getName());
     }
 }

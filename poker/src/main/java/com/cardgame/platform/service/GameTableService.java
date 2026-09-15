@@ -24,6 +24,7 @@ public class GameTableService {
     private final GameTypeRepository gameTypeRepository;
     private final GamePlayerRepository gamePlayerRepository;
     private final PlayerService playerService;
+    private final TableRealtimePublisher tableRealtimePublisher;
 
     @Transactional
     public GameTableResponse create(CreateTableRequest request) {
@@ -41,7 +42,7 @@ public class GameTableService {
         gameTable.setHostPlayer(host);
         gameTable.setTableName(request.tableName().trim());
         gameTable.setMaxPlayers(request.maxPlayers().byteValue());
-        gameTable.setEntryBet(0L);
+        gameTable.setEntryBet(request.entryBet());
         gameTable.setTableStatus(GameTableStatus.OPEN);
         gameTable = gameTableRepository.save(gameTable);
 
@@ -52,7 +53,9 @@ public class GameTableService {
         hostSeat.setPlayerStatus(GamePlayerStatus.JOINED);
         gamePlayerRepository.save(hostSeat);
 
-        return toResponse(gameTable, List.of(hostSeat));
+        GameTableResponse response = toResponse(gameTable, List.of(hostSeat));
+        tableRealtimePublisher.tableUpdated(gameTable.getTableId());
+        return response;
     }
 
     @Transactional
@@ -84,7 +87,9 @@ public class GameTableService {
         gamePlayerRepository.save(gamePlayer);
 
         currentPlayers.add(gamePlayer);
-        return toResponse(gameTable, currentPlayers);
+        GameTableResponse response = toResponse(gameTable, currentPlayers);
+        tableRealtimePublisher.tableUpdated(tableId);
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -102,6 +107,10 @@ public class GameTableService {
         playerService.requireCaller(username, playerId);
     }
 
+    public Long playerIdFor(String username) {
+        return playerService.playerIdFor(username);
+    }
+
     private int firstFreeSeat(Set<Integer> occupiedSeats, int maxPlayers) {
         for (int seat = 1; seat <= maxPlayers; seat++) {
             if (!occupiedSeats.contains(seat)) {
@@ -117,6 +126,7 @@ public class GameTableService {
                         player.getSeatNumber().intValue(), player.getPlayerStatus().name()))
                 .toList();
         return new GameTableResponse(table.getTableId(), table.getTableName(), table.getGameType().getCode(),
-                table.getHostPlayer().getPlayerId(), table.getMaxPlayers().intValue(), table.getTableStatus().name(), playerResponses);
+                table.getHostPlayer().getPlayerId(), table.getEntryBet(), table.getMaxPlayers().intValue(),
+                table.getTableStatus().name(), playerResponses);
     }
 }

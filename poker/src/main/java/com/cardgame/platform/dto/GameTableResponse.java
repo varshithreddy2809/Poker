@@ -7,6 +7,7 @@ public record GameTableResponse(
         String tableName,
         String gameType,
         Long hostPlayerId,
+        Long entryBet,
         Integer maxPlayers,
         String status,
         List<TablePlayerResponse> players) {

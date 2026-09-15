@@ -35,7 +35,8 @@ public class PlayerService implements UserDetailsService {
         player.setUsername(request.username().trim());
         player.setEmail(request.email().trim().toLowerCase());
         player.setPasswordHash(passwordEncoder.encode(request.password()));
-        player.setCoinBalance(0L);
+        // Development-friendly virtual starting balance. No real money is used.
+        player.setCoinBalance(10_000L);
         player.setAccountStatus(AccountStatus.ACTIVE);
         return toResponse(playerRepository.save(player));
     }
@@ -73,6 +74,13 @@ public class PlayerService implements UserDetailsService {
         if (!player.getPlayerId().equals(claimedPlayerId)) {
             throw new GameRuleViolationException("You may only act as your own player account.");
         }
+    }
+
+    @Transactional(readOnly = true)
+    public Long playerIdFor(String username) {
+        return playerRepository.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Authenticated player was not found."))
+                .getPlayerId();
     }
 
     private PlayerResponse toResponse(Player player) {
