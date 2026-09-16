@@ -21,6 +21,7 @@ public class FriendlyTeenPattiService {
     private static final List<String> RANKS = List.of("2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A");
     private static final List<String> SUITS = List.of("D", "C", "H", "S");
     private static final int VISIBILITY_SECONDS = 30, TURN_SECONDS = 30;
+    private static final int BET_LIMIT_MULTIPLIER = 15, FINAL_SAME_TURNS = 5;
 
     private final GameTableService gameTableService;
     private final GameTableRepository gameTableRepository;
@@ -95,14 +96,20 @@ public class FriendlyTeenPattiService {
     public RoundResponse takeTurn(Long roundId, Long playerId, TurnActionRequest request) {
         GameRound round = active(roundId); RoundPlayer state = current(round, playerId); String action = request.action().trim().toUpperCase(Locale.ROOT);
         if ("DROP".equals(action)) { drop(round, state); return publish(round); }
-        if (round.getPhase() == GamePhase.FORCED_SAME && !"SAME".equals(action)) throw new GameRuleViolationException("Only SAME is allowed for this five-turn sequence.");
+        if (round.getPhase() == GamePhase.FORCED_SAME && !"SAME".equals(action)) throw new GameRuleViolationException("Only SAME is allowed during the final five-turn sequence.");
         long amount;
         if ("SAME".equals(action)) amount = round.getCurrentBet();
-        else if ("RAISE".equals(action)) { if (request.amount() == null || request.amount() <= round.getCurrentBet()) throw new GameRuleViolationException("A raise must be at least 1 coin above the current bet."); amount = request.amount(); round.setCurrentBet(amount); }
+        else if ("RAISE".equals(action)) {
+            if (request.amount() == null || request.amount() <= round.getCurrentBet()) throw new GameRuleViolationException("A raise must be at least 1 coin above the current bet.");
+            if (round.getPhase() != GamePhase.FINAL_TWO && request.amount() > bettingLimit(round)) {
+                throw new GameRuleViolationException("Normal betting cannot exceed the 15x limit of " + bettingLimit(round) + ".");
+            }
+            amount = request.amount(); round.setCurrentBet(amount);
+        }
         else throw new GameRuleViolationException("Allowed actions are SAME, RAISE, and DROP.");
         debit(round, state, amount, action);
         if (round.getPhase() == GamePhase.FORCED_SAME) { round.setForcedSameTurnsRemaining((byte) (round.getForcedSameTurnsRemaining() - 1)); if (round.getForcedSameTurnsRemaining() == 0) { finishCompared(round); return publish(round); } }
-        advance(round, state); return publish(round);
+        enterFinalTwoIfEligible(round); advance(round, state); return publish(round);
     }
 
     @Transactional
@@ -111,7 +118,7 @@ public class FriendlyTeenPattiService {
     @Transactional
     public RoundResponse requestSideShow(Long roundId, Long playerId, SideShowRequest request) {
         GameRound round = active(roundId); RoundPlayer requester = current(round, playerId);
-        if (round.getPhase() != GamePhase.BETTING && round.getPhase() != GamePhase.FORCED_SAME) throw new GameRuleViolationException("A Side Show is not available right now.");
+        if (round.getPhase() != GamePhase.FINAL_TWO) throw new GameRuleViolationException("A Side Show is available only in the final two-player 15x phase.");
         RoundPlayer target = state(roundId, request.targetPlayerId());
         if (target.getRoundPlayerStatus() != RoundPlayerStatus.ACTIVE || target.getRoundPlayerId().equals(requester.getRoundPlayerId())) throw new GameRuleViolationException("Select another active player.");
         SideShow show = new SideShow(); show.setGameRound(round); show.setRequesterGamePlayer(requester.getGamePlayer()); show.setRequestedGamePlayer(target.getGamePlayer()); sideShowRepository.save(show);
@@ -127,7 +134,10 @@ public class FriendlyTeenPattiService {
         show.setStatus(answer); show.setRespondedAt(LocalDateTime.now()); sideShowRepository.save(show);
         RoundPlayer requester = byGamePlayer(roundId, show.getRequesterGamePlayer().getGamePlayerId()); RoundPlayer target = byGamePlayer(roundId, show.getRequestedGamePlayer().getGamePlayerId());
         if (answer.equals("ACCEPT")) { RoundPlayer weaker = compare(requester, target) >= 0 ? target : requester; weaker.setRoundPlayerStatus(RoundPlayerStatus.DROPPED); weaker.setDroppedAt(LocalDateTime.now()); roundPlayerRepository.save(weaker); continueOrFinish(round, requester); }
-        else if (activePlayers(round).size() == 2) { round.setPhase(GamePhase.FORCED_SAME); round.setForcedSameTurnsRemaining((byte) 5); advance(round, requester); }
+        else if (activePlayers(round).size() == 2) {
+            // Exactly five SAME actions total, not five turns per player.
+            round.setPhase(GamePhase.FORCED_SAME); round.setForcedSameTurnsRemaining((byte) FINAL_SAME_TURNS); advance(round, requester);
+        }
         else { round.setPhase(GamePhase.BETTING); round.setCurrentTurnGamePlayer(requester.getGamePlayer()); round.setTurnDeadline(LocalDateTime.now().plusSeconds(TURN_SECONDS)); gameRoundRepository.save(round); }
         return publish(round);
     }
@@ -138,7 +148,7 @@ public class FriendlyTeenPattiService {
         for (GameRound round : gameRoundRepository.findByRoundStatus(GameRoundStatus.IN_PROGRESS)) {
             if (round.getPhase() == GamePhase.CHOOSING_VISIBILITY && round.getVisibilityDeadline() != null && !round.getVisibilityDeadline().isAfter(now)) {
                 roundPlayerRepository.findByGameRound_RoundIdOrderByGamePlayer_SeatNumber(round.getRoundId()).stream().filter(p -> p.getVisibilityStatus() == VisibilityStatus.PENDING).forEach(p -> { p.setVisibilityStatus(VisibilityStatus.BLIND); p.setSelectedAt(now); }); beginBetting(round); publish(round);
-            } else if ((round.getPhase() == GamePhase.BETTING || round.getPhase() == GamePhase.FORCED_SAME) && round.getTurnDeadline() != null && !round.getTurnDeadline().isAfter(now)) {
+            } else if ((round.getPhase() == GamePhase.BETTING || round.getPhase() == GamePhase.FINAL_TWO || round.getPhase() == GamePhase.FORCED_SAME) && round.getTurnDeadline() != null && !round.getTurnDeadline().isAfter(now)) {
                 drop(round, byGamePlayer(round.getRoundId(), round.getCurrentTurnGamePlayer().getGamePlayerId())); publish(round);
             }
         }
@@ -147,8 +157,15 @@ public class FriendlyTeenPattiService {
     private void beginBetting(GameRound round) { List<RoundPlayer> players = activePlayers(round); RoundPlayer first = players.get(RANDOM.nextInt(players.size())); round.setPhase(GamePhase.BETTING); round.setCurrentTurnGamePlayer(first.getGamePlayer()); round.setVisibilityDeadline(null); round.setTurnDeadline(LocalDateTime.now().plusSeconds(TURN_SECONDS)); gameRoundRepository.save(round); }
     private void debit(GameRound round, RoundPlayer state, long amount, String type) { Player player = state.getGamePlayer().getPlayer(); if (player.getCoinBalance() < amount) throw new GameRuleViolationException("Insufficient virtual coins. Drop or request a loan."); player.setCoinBalance(player.getCoinBalance() - amount); playerRepository.save(player); WalletTransaction tx = new WalletTransaction(); tx.setPlayer(player); tx.setGameRound(round); tx.setTransactionType(type); tx.setAmount(-amount); tx.setBalanceAfter(player.getCoinBalance()); walletTransactionRepository.save(tx); state.setTotalContribution(state.getTotalContribution() + amount); roundPlayerRepository.save(state); round.setPot(round.getPot() + amount); gameRoundRepository.save(round); }
     private void drop(GameRound round, RoundPlayer player) { player.setRoundPlayerStatus(RoundPlayerStatus.DROPPED); player.setDroppedAt(LocalDateTime.now()); roundPlayerRepository.save(player); continueOrFinish(round, player); }
-    private void continueOrFinish(GameRound round, RoundPlayer previous) { List<RoundPlayer> left = activePlayers(round); if (left.size() == 1) { finish(round, left.getFirst(), false); return; } round.setPhase(GamePhase.BETTING); advance(round, previous); }
+    private void continueOrFinish(GameRound round, RoundPlayer previous) { List<RoundPlayer> left = activePlayers(round); if (left.size() == 1) { finish(round, left.getFirst(), false); return; } round.setPhase(GamePhase.BETTING); enterFinalTwoIfEligible(round); advance(round, previous); }
     private void advance(GameRound round, RoundPlayer previous) { List<RoundPlayer> players = activePlayers(round); int index = players.stream().map(RoundPlayer::getRoundPlayerId).toList().indexOf(previous.getRoundPlayerId()); RoundPlayer next = players.get((index + 1 + players.size()) % players.size()); round.setCurrentTurnGamePlayer(next.getGamePlayer()); round.setTurnDeadline(LocalDateTime.now().plusSeconds(TURN_SECONDS)); gameRoundRepository.save(round); }
+    private long bettingLimit(GameRound round) { return Math.multiplyExact(round.getGameTable().getEntryBet(), BET_LIMIT_MULTIPLIER); }
+    private void enterFinalTwoIfEligible(GameRound round) {
+        if (round.getPhase() == GamePhase.BETTING && activePlayers(round).size() == 2 && round.getCurrentBet() >= bettingLimit(round)) {
+            round.setPhase(GamePhase.FINAL_TWO);
+            gameRoundRepository.save(round);
+        }
+    }
     private void finishCompared(GameRound round) { finish(round, activePlayers(round).stream().max(this::compare).orElseThrow(), true); }
     private void finish(GameRound round, RoundPlayer winner, boolean revealCards) { Player player = winner.getGamePlayer().getPlayer(); player.setCoinBalance(player.getCoinBalance() + round.getPot()); playerRepository.save(player); WalletTransaction tx = new WalletTransaction(); tx.setPlayer(player); tx.setGameRound(round); tx.setTransactionType("POT_WIN"); tx.setAmount(round.getPot()); tx.setBalanceAfter(player.getCoinBalance()); walletTransactionRepository.save(tx); round.setWinnerPlayer(player); round.setRoundStatus(GameRoundStatus.COMPLETED); round.setPhase(GamePhase.COMPLETED); round.setEndedAt(LocalDateTime.now()); round.setCurrentTurnGamePlayer(null); round.setTurnDeadline(null); gameRoundRepository.save(round); GameTable table = round.getGameTable(); table.setTableStatus(GameTableStatus.OPEN); gameTableRepository.save(table); tableRealtimePublisher.showdown(table.getTableId(), new ShowdownResponse(round.getRoundId(), player.getPlayerId(), player.getUsername(), revealCards ? "SHOWDOWN" : "LAST_PLAYER_STANDING", revealCards ? publicHands(round) : List.of())); }
     private int compare(RoundPlayer a, RoundPlayer b) { return handEvaluator.evaluate(cards(a)).compareTo(handEvaluator.evaluate(cards(b))); }
@@ -162,7 +179,15 @@ public class FriendlyTeenPattiService {
     private GameRound active(Long id) { GameRound round = gameRoundRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Round was not found.")); if (round.getRoundStatus() != GameRoundStatus.IN_PROGRESS) throw new GameRuleViolationException("This round has ended."); return round; }
     private VisibilityStatus visibility(String value) { try { VisibilityStatus result = VisibilityStatus.valueOf(value.trim().toUpperCase(Locale.ROOT)); if (result == VisibilityStatus.PENDING) throw new IllegalArgumentException(); return result; } catch (IllegalArgumentException e) { throw new GameRuleViolationException("Choose BLIND or SEEN."); } }
     private CardResponse card(PlayerCard c) { return new CardResponse(c.getCardRank(), c.getCardSuit(), c.getCardPosition().intValue()); }
-    private RoundResponse publish(GameRound r) { RoundResponse response = response(r); tableRealtimePublisher.roundStarted(response); return response; }
+    private RoundResponse publish(GameRound r) {
+        RoundResponse response = response(r);
+        // finish() already sends a SHOWDOWN event. Sending a second generic
+        // round event here raced the client and cleared the winner display.
+        if (r.getRoundStatus() == GameRoundStatus.IN_PROGRESS) {
+            tableRealtimePublisher.roundStarted(response);
+        }
+        return response;
+    }
     private RoundResponse response(GameRound r) { List<RoundPlayerResponse> players = roundPlayerRepository.findByGameRound_RoundIdOrderByGamePlayer_SeatNumber(r.getRoundId()).stream().map(p -> new RoundPlayerResponse(p.getGamePlayer().getPlayer().getPlayerId(), p.getGamePlayer().getPlayer().getUsername(), p.getGamePlayer().getSeatNumber().intValue(), p.getVisibilityStatus().name(), p.getRoundPlayerStatus().name(), p.getTotalContribution())).toList(); SideShow pending = sideShowRepository.findTopByGameRound_RoundIdAndStatusOrderByCreatedAtDesc(r.getRoundId(), "PENDING").orElse(null); return new RoundResponse(r.getRoundId(), r.getGameTable().getTableId(), r.getRoundNumber(), r.getRoundStatus().name(), r.getPhase().name(), r.getCurrentBet(), r.getPot(), r.getCurrentTurnGamePlayer() == null ? null : r.getCurrentTurnGamePlayer().getPlayer().getPlayerId(), r.getVisibilityDeadline(), r.getTurnDeadline(), r.getForcedSameTurnsRemaining().intValue(), pending == null ? null : pending.getSideShowId(), pending == null ? null : pending.getRequesterGamePlayer().getPlayer().getPlayerId(), pending == null ? null : pending.getRequestedGamePlayer().getPlayer().getPlayerId(), players); }
     private List<DeckCard> newDeck() { List<DeckCard> deck = new ArrayList<>(52); for (String suit : SUITS) for (String rank : RANKS) deck.add(new DeckCard(rank, suit)); return deck; }
     private record DeckCard(String rank, String suit) { }

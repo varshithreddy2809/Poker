@@ -1,0 +1,101 @@
+:root {
+  /* Color */
+  --color-bg-primary: #07060c;
+  --color-bg-secondary: #0d0a18;
+  --color-bg-navy: #0a1020;
+  --color-bg-purple: #180c28;
+  --color-surface: #161021;
+  --color-surface-elevated: #21152d;
+  --color-surface-glass: rgba(22, 16, 33, 0.72);
+  --color-glass-light: rgba(255, 250, 238, 0.08);
+  --color-gold: #d6a64f;
+  --color-gold-light: #f5d98a;
+  --color-gold-champagne: #f5e6ba;
+  --color-gold-dark: #8d6220;
+  --color-purple: #6c3b9b;
+  --color-purple-light: #ae78e8;
+  --color-magenta: #b1489a;
+  --color-text-primary: #fff8e8;
+  --color-text-secondary: #c9bfad;
+  --color-text-muted: #958b9a;
+  --color-border: rgba(225, 195, 122, 0.32);
+  --color-border-subtle: rgba(255, 250, 238, 0.12);
+  --color-focus: #f7d36f;
+  --color-success: #72d99b;
+  --color-danger: #f08a9a;
+
+  /* Gradients */
+  --gradient-gold-metallic: linear-gradient(135deg, #fff0ae 0%, #d7a443 40%, #8f5d18 100%);
+  --gradient-gold-shine: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.58) 50%, transparent 65%);
+  --gradient-purple-luxury: linear-gradient(135deg, #9b51ce 0%, #50237f 50%, #1d103c 100%);
+  --gradient-dark-glass: linear-gradient(135deg, rgba(43, 28, 57, .82), rgba(10, 10, 24, .88));
+  --gradient-hero: radial-gradient(ellipse at 50% 0%, rgba(105, 64, 152, .34), transparent 46%), linear-gradient(180deg, #111027 0%, #07060c 100%);
+  --gradient-border-glow: linear-gradient(135deg, rgba(245, 217, 138, .78), rgba(174, 91, 225, .42), rgba(245, 217, 138, .25));
+  --gradient-button-dark: linear-gradient(135deg, rgba(72, 44, 28, .96), rgba(22, 12, 17, .98));
+
+  /* Shadows and glows */
+  --shadow-sm: 0 5px 14px rgba(0, 0, 0, .22);
+  --shadow-md: 0 13px 32px rgba(0, 0, 0, .34);
+  --shadow-lg: 0 28px 78px rgba(0, 0, 0, .56);
+  --shadow-card: 0 16px 35px rgba(0, 0, 0, .48);
+  --shadow-panel: 0 24px 64px rgba(0, 0, 0, .5), inset 0 1px rgba(255,255,255,.08);
+  --shadow-floating: 0 24px 46px rgba(0, 0, 0, .62);
+  --glow-gold: 0 0 26px rgba(239, 188, 77, .34);
+  --glow-purple: 0 0 32px rgba(167, 77, 205, .32);
+
+  /* Typography */
+  --font-display: "Cinzel", Georgia, serif;
+  --font-ui: "Manrope", Arial, sans-serif;
+  --font-size-caption: clamp(.68rem, .65rem + .12vw, .78rem);
+  --font-size-body: clamp(.9rem, .85rem + .18vw, 1rem);
+  --font-size-h3: clamp(1.1rem, 1rem + .45vw, 1.35rem);
+  --font-size-h2: clamp(1.45rem, 1.15rem + 1vw, 2.1rem);
+  --font-size-h1: clamp(2rem, 1.25rem + 3vw, 4.75rem);
+  --tracking-luxury: .18em;
+  --tracking-label: .12em;
+
+  /* Spacing */
+  --space-2xs: .25rem;
+  --space-xs: .5rem;
+  --space-sm: .75rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4.5rem;
+
+  /* Shape, motion, layers */
+  --radius-sm: .5rem;
+  --radius-md: .75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-pill: 999px;
+  --transition-fast: 150ms cubic-bezier(.2, .8, .2, 1);
+  --transition-normal: 260ms cubic-bezier(.2, .8, .2, 1);
+  --transition-slow: 560ms cubic-bezier(.2, .8, .2, 1);
+  --z-base: 0;
+  --z-raised: 1;
+  --z-overlay: 10;
+  --z-modal: 100;
+
+  /* Responsive layout */
+  --screen-mobile: 480px;
+  --screen-tablet: 768px;
+  --screen-laptop: 1024px;
+  --screen-desktop: 1280px;
+  --screen-wide: 1600px;
+}
+
+/* A restrained alternate state for ThemeToggle; components keep the same tokens. */
+:root[data-theme="royal"] {
+  --color-bg-primary: #090713;
+  --color-bg-secondary: #130b22;
+  --color-bg-navy: #0b1028;
+  --color-bg-purple: #220d38;
+  --color-surface: #1e1231;
+  --color-surface-elevated: #2a1942;
+  --color-surface-glass: rgba(31, 17, 51, 0.76);
+  --color-purple: #8d55c4;
+  --color-purple-light: #c99aff;
+  --color-magenta: #c04aa8;
+}

@@ -1,0 +1,31 @@
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeDown { from { opacity: 0; transform: translateY(-18px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes slowFloat { 0%,100% { transform: translate3d(0,0,0) rotate(0); } 50% { transform: translate3d(0,-16px,0) rotate(1deg); } }
+@keyframes glowPulse { 0%,100% { box-shadow: var(--glow-gold); } 50% { box-shadow: 0 0 40px rgba(239, 188, 77, .55), 0 0 80px rgba(159, 73, 193, .18); } }
+@keyframes goldShimmer { from { background-position: 200% center; } to { background-position: -200% center; } }
+@keyframes cardFloat { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-12px) rotate(1deg); } }
+@keyframes rotateSlow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes shine { from { transform: translateX(-130%) skewX(-18deg); } to { transform: translateX(230%) skewX(-18deg); } }
+@keyframes hoverLift { to { transform: translateY(-5px) scale(1.012); } }
+
+.motion-fade-in { animation: fadeIn var(--transition-slow) both; }
+.motion-fade-up { animation: fadeUp var(--transition-slow) both; }
+.motion-fade-down { animation: fadeDown var(--transition-slow) both; }
+.motion-scale-in { animation: scaleIn var(--transition-normal) both; }
+.motion-float { animation: float 4s ease-in-out infinite; }
+.motion-slow-float { animation: slowFloat 8s ease-in-out infinite; }
+.motion-glow-pulse { animation: glowPulse 3.5s ease-in-out infinite; }
+.motion-card-float { animation: cardFloat 5s ease-in-out infinite; }
+.motion-rotate-slow { animation: rotateSlow 24s linear infinite; }
+.gold-shimmer { background: var(--gradient-gold-shine); background-size: 220% 100%; animation: goldShimmer 2.8s linear infinite; }
+.shine-on-hover { position: relative; overflow: hidden; }
+.shine-on-hover::after { content: ""; position: absolute; inset: 0; width: 35%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.32), transparent); transform: translateX(-130%) skewX(-18deg); }
+.shine-on-hover:hover::after { animation: shine 700ms cubic-bezier(.2, .8, .2, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+

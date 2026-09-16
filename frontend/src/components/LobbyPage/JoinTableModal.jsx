@@ -1,0 +1,4 @@
+export default function JoinTableModal({ open, onClose, tableId, setTableId, onLookup, busy }) {
+  if (!open) return null;
+  return <div className="lobby-modal-layer" role="presentation"><button className="lobby-modal-layer__backdrop" type="button" aria-label="Close join table" onClick={onClose} /><form className="lobby-modal" onSubmit={onLookup}><button className="lobby-modal__close" type="button" aria-label="Close" onClick={onClose}>×</button><p className="type-label">Find a table</p><h2>Join Teen Patti</h2><label>Table ID<input type="number" min="1" value={tableId} onChange={(event) => setTableId(event.target.value)} required /></label><p className="lobby-modal__hint">Available-table listing is not provided by the current API. Enter a shared table ID to fetch its real-time details.</p><button className="primary" disabled={busy}>{busy ? "Looking up…" : "Find table"}</button></form></div>;
+}
