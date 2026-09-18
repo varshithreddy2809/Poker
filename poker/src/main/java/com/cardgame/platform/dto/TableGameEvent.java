@@ -11,6 +11,10 @@ public record TableGameEvent(
         return new TableGameEvent("TABLE_UPDATED", tableId, null, null);
     }
 
+    public static TableGameEvent borrowingUpdated(Long tableId) {
+        return new TableGameEvent("BORROWING_UPDATED", tableId, null, null);
+    }
+
     public static TableGameEvent roundStarted(RoundResponse round) {
         return new TableGameEvent("ROUND_STARTED", round.tableId(), round, null);
     }

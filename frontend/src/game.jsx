@@ -63,15 +63,20 @@ function LegacyTable({ session, table, round, hand, showdown, live, run, leaveRo
   </section>;
 }
 */
-function Table({ session, table, round, hand, showdown, live, run, leaveRound, playAgain }) {
-  return <GameTable session={session} table={table} round={round} hand={hand} showdown={showdown} live={live} run={run} leaveRound={leaveRound} playAgain={playAgain} />;
+function Table({ session, table, round, hand, showdown, live, run, leaveRound, playAgain, borrowing, borrow, refreshBorrowing }) {
+  return <GameTable session={session} table={table} round={round} hand={hand} showdown={showdown} live={live} run={run} leaveRound={leaveRound} playAgain={playAgain} borrowing={borrowing} borrow={borrow} refreshBorrowing={refreshBorrowing} />;
 }
 
 export default function Game() {
-  const [session, setSession] = useState(null); const [table, setTable] = useState(null); const [round, setRound] = useState(null); const [hand, setHand] = useState(null); const [showdown, setShowdown] = useState(null); const [live, setLive] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [authRequest, setAuthRequest] = useState(null); const [page, setPage] = useState(() => location.pathname === "/games" ? "games" : "home");
+  const [session, setSession] = useState(null); const [table, setTable] = useState(null); const [round, setRound] = useState(null); const [hand, setHand] = useState(null); const [showdown, setShowdown] = useState(null); const [live, setLive] = useState(false); const [borrowing, setBorrowing] = useState(null); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [authRequest, setAuthRequest] = useState(null); const [page, setPage] = useState(() => location.pathname === "/games" ? "games" : "home");
   const tell = useCallback((text, isError = false) => { setError(isError ? text : ""); setNotice(isError ? "" : text); }, []);
   const refreshTable = useCallback(async (id, credentials) => setTable(await api(`/tables/${id}`, credentials)), []);
-  useEffect(() => { if (!session || !table?.tableId) return; const client = new Client({ brokerURL: wsUrl(), reconnectDelay: 3000, debug: () => {}, onConnect: () => { setLive(true); client.subscribe(`/topic/tables/${table.tableId}`, async (message) => { const event = JSON.parse(message.body); try { if (event.type === "SHOWDOWN") { setShowdown(event.showdown); await refreshTable(table.tableId, session.credentials); } else if (event.round) { setRound(event.round); setShowdown(null); setHand(null); await refreshTable(table.tableId, session.credentials); } else await refreshTable(table.tableId, session.credentials); } catch (e) { tell(e.message, true); } }); }, onWebSocketClose: () => setLive(false) }); client.activate(); return () => { setLive(false); client.deactivate(); }; }, [session, table?.tableId, refreshTable, tell]);
+  const refreshBorrowing = useCallback(async () => {
+    if (!session) return;
+    setBorrowing(await api("/coin-borrowing", session.credentials));
+  }, [session]);
+  useEffect(() => { if (!session || !table?.tableId) return; const client = new Client({ brokerURL: wsUrl(), reconnectDelay: 3000, debug: () => {}, connectHeaders: { login: session.credentials.username, passcode: session.credentials.password }, onConnect: () => { setLive(true); client.subscribe(`/topic/tables/${table.tableId}`, async (message) => { const event = JSON.parse(message.body); try { if (event.type === "SHOWDOWN") { setShowdown(event.showdown); await refreshTable(table.tableId, session.credentials); } else if (event.round) { setRound(event.round); setShowdown(null); setHand(null); await refreshTable(table.tableId, session.credentials); } else await refreshTable(table.tableId, session.credentials); if (event.type === "BORROWING_UPDATED") await refreshBorrowing(); } catch (e) { tell(e.message, true); } }); }, onWebSocketClose: () => setLive(false) }); client.activate(); return () => { setLive(false); client.deactivate(); }; }, [session, table?.tableId, refreshTable, refreshBorrowing, tell]);
+  useEffect(() => { if (!session || !round) return undefined; const timer = window.setTimeout(() => { refreshBorrowing().catch((e) => tell(e.message, true)); }, 0); return () => window.clearTimeout(timer); }, [session, round, refreshBorrowing, tell]);
   useEffect(() => { const mine = round?.players?.find((p) => p.playerId === session?.player?.playerId); if (!round || !session || hand || mine?.visibility !== "SEEN") return; api(`/rounds/${round.roundId}/players/${session.player.playerId}/hand`, session.credentials).then(setHand).catch((e) => tell(e.message, true)); }, [round, session, hand, tell]);
   async function start() { try { const next = await api(`/tables/${table.tableId}/rounds`, session.credentials, "POST", { hostPlayerId: session.player.playerId }); setRound(next); setHand(null); setShowdown(null); } catch (e) { tell(e.message, true); } }
   async function refreshMyBalance() {
@@ -86,7 +91,10 @@ export default function Game() {
       return true;
     } catch (e) { tell(e.message, true); return false; }
   }
-  function signOut() { setSession(null); setTable(null); setRound(null); setHand(null); setShowdown(null); }
+  async function borrow(path, body, message) {
+    try { await api(path, session.credentials, "POST", body); await Promise.all([refreshMyBalance(), refreshBorrowing()]); tell(message); return true; } catch (e) { tell(e.message, true); return false; }
+  }
+  function signOut() { setSession(null); setTable(null); setRound(null); setHand(null); setShowdown(null); setBorrowing(null); }
   const openAuth = (mode) => setAuthRequest({ mode, requestedAt: Date.now() });
   useEffect(() => { const syncPage = () => setPage(location.pathname === "/games" ? "games" : "home"); window.addEventListener("popstate", syncPage); return () => window.removeEventListener("popstate", syncPage); }, []);
   function navigate(item) {
@@ -94,5 +102,5 @@ export default function Game() {
     if (page !== "home") { history.pushState({}, "", "/"); setPage("home"); }
     window.setTimeout(() => document.getElementById(item === "Features" ? "features" : item === "How to Play" || item === "About" ? "statistics" : "footer")?.scrollIntoView({ behavior: "smooth" }), 0);
   }
-  return <main className="app-shell"><CinematicBackground />{!session && <CasinoDecorations />}{!session ? <><Navbar onLogin={() => openAuth("login")} onRegister={() => openAuth("register")} onNavigate={navigate} activeItem={page === "games" ? "Games" : "Home"} />{page === "games" ? <GamesPage onPlayTeenPatti={() => openAuth("login")} /> : <HomePage onLogin={() => openAuth("login")} onRegister={() => openAuth("register")} />}</> : <header className="brand">ACEVERSE <small>Authoritative Teen Patti</small><span className="identity">{session.player.username} - {session.player.coinBalance} coins</span></header>}<Message error={error} notice={notice} />{!session ? <Auth key={authRequest?.requestedAt ?? "landing"} setSession={setSession} tell={tell} defaultMode={authRequest?.mode} /> : !round ? <Lobby session={session} table={table} setTable={setTable} start={start} signOut={signOut} tell={tell} /> : <Table session={session} table={table} round={round} hand={hand} showdown={showdown} live={live} run={run} leaveRound={() => run(`/rounds/${round.roundId}/leave`)} playAgain={() => { setRound(null); setHand(null); setShowdown(null); }} />}</main>;
+  return <main className="app-shell"><CinematicBackground />{!session && <CasinoDecorations />}{!session ? <><Navbar onLogin={() => openAuth("login")} onRegister={() => openAuth("register")} onNavigate={navigate} activeItem={page === "games" ? "Games" : "Home"} />{page === "games" ? <GamesPage onPlayTeenPatti={() => openAuth("login")} /> : <HomePage onLogin={() => openAuth("login")} onRegister={() => openAuth("register")} />}</> : <header className="brand">ACEVERSE <small>Authoritative Teen Patti</small><span className="identity">{session.player.username} - {session.player.coinBalance} coins</span></header>}<Message error={error} notice={notice} />{!session ? <Auth key={authRequest?.requestedAt ?? "landing"} setSession={setSession} tell={tell} defaultMode={authRequest?.mode} /> : !round ? <Lobby session={session} table={table} setTable={setTable} start={start} signOut={signOut} tell={tell} /> : <Table session={session} table={table} round={round} hand={hand} showdown={showdown} live={live} run={run} leaveRound={() => run(`/rounds/${round.roundId}/leave`)} playAgain={() => { setRound(null); setHand(null); setShowdown(null); }} borrowing={borrowing} borrow={borrow} refreshBorrowing={refreshBorrowing} />}</main>;
 }

@@ -10,7 +10,7 @@ export default function GameControls({ round, mine, isYourTurn, run, leaveRound 
   const [raise, setRaise] = useState(round.currentBet + 1); const [targetId, setTargetId] = useState(""); const [busy, setBusy] = useState(false); const [feedback, setFeedback] = useState(""); const [confirmTarget, setConfirmTarget] = useState(null);
   const active = (round.players || []).filter((player) => player.status === "ACTIVE" && player.playerId !== mine?.playerId); const minimum = Number(round.currentBet) + 1;
   const invoke = async (path, body, message) => { setBusy(true); setFeedback(""); try { if (await run(path, body)) setFeedback(message); } finally { setBusy(false); } };
-  const drop = async () => { setBusy(true); setFeedback(""); try { if (await leaveRound()) setFeedback("Player dropped."); } finally { setBusy(false); } };
+  const drop = async () => { if (!window.confirm("Leave this game? You will be dropped immediately.")) return; if (!window.confirm("Final confirmation: leaving cannot be undone. Drop now?")) return; setBusy(true); setFeedback(""); try { if (await leaveRound()) setFeedback("Player dropped."); } finally { setBusy(false); } };
   const chooseVisibility = mine?.visibility === "PENDING";
   const canBet = isYourTurn && ["BETTING", "FINAL_TWO", "FORCED_SAME"].includes(round.phase);
   const canSideShow = isYourTurn && round.phase === "FINAL_TWO" && active.length > 0;

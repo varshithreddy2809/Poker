@@ -35,6 +35,10 @@ public class RoundPlayer {
 
     @Column(name = "total_contribution", nullable = false)
     private Long totalContribution = 0L;
+    @Enumerated(EnumType.STRING) @Column(name = "connection_status", nullable = false, length = 20)
+    private PlayerConnectionStatus connectionStatus = PlayerConnectionStatus.CONNECTED;
+    @Column(name = "disconnected_at") private LocalDateTime disconnectedAt;
+    @Column(name = "reconnect_deadline") private LocalDateTime reconnectDeadline;
 
     @Column(name = "selected_at")
     private LocalDateTime selectedAt;

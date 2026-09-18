@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 public class GameTableController {
     private final GameTableService gameTableService;
     private final FriendlyTeenPattiService friendlyTeenPattiService;
+    private final com.cardgame.platform.service.CoinBorrowingService coinBorrowingService;
 
     @PostMapping("/tables")
     @ResponseStatus(HttpStatus.CREATED)
@@ -47,6 +48,11 @@ public class GameTableController {
     @GetMapping("/tables/{tableId}/rounds/active")
     public RoundResponse getActiveRound(@PathVariable Long tableId) {
         return friendlyTeenPattiService.getActiveRound(tableId);
+    }
+
+    @PostMapping("/rounds/{roundId}/spectate")
+    public RoundResponse spectate(@PathVariable Long roundId, @Valid @RequestBody SpectateRequest request, Authentication authentication) {
+        return friendlyTeenPattiService.spectate(roundId, currentPlayerId(authentication), request.selectedPlayerId());
     }
 
     @GetMapping("/rounds/{roundId}/players/{playerId}/hand")
@@ -87,6 +93,28 @@ public class GameTableController {
     public RoundResponse respondToSideShow(@PathVariable Long roundId, @PathVariable Long sideShowId,
                                            @Valid @RequestBody SideShowResponseRequest request, Authentication authentication) {
         return friendlyTeenPattiService.respondToSideShow(roundId, sideShowId, currentPlayerId(authentication), request);
+    }
+
+    @PostMapping("/rounds/{roundId}/coin-requests")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CoinBorrowRequestResponse requestCoins(@PathVariable Long roundId, @Valid @RequestBody CoinBorrowRequestPayload request,
+                                                   Authentication authentication) {
+        return coinBorrowingService.request(roundId, currentPlayerId(authentication), request);
+    }
+
+    @PostMapping("/coin-requests/{requestId}/accept")
+    public CoinBorrowRequestResponse acceptCoinRequest(@PathVariable Long requestId, Authentication authentication) {
+        return coinBorrowingService.accept(requestId, currentPlayerId(authentication));
+    }
+
+    @PostMapping("/coin-requests/{requestId}/reject")
+    public CoinBorrowRequestResponse rejectCoinRequest(@PathVariable Long requestId, Authentication authentication) {
+        return coinBorrowingService.reject(requestId, currentPlayerId(authentication));
+    }
+
+    @GetMapping("/coin-borrowing")
+    public BorrowingStateResponse borrowingState(Authentication authentication) {
+        return coinBorrowingService.state(currentPlayerId(authentication));
     }
 
     private void requireCaller(Authentication authentication, Long playerId) {

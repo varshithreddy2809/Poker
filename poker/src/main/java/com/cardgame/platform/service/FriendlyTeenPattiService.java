@@ -34,6 +34,7 @@ public class FriendlyTeenPattiService {
     private final SideShowRepository sideShowRepository;
     private final TeenPattiHandEvaluator handEvaluator;
     private final TableRealtimePublisher tableRealtimePublisher;
+    private final CoinBorrowingService coinBorrowingService;
 
     @Transactional
     public RoundResponse startRound(Long tableId, StartRoundRequest request) {
@@ -92,6 +93,16 @@ public class FriendlyTeenPattiService {
         return response(gameRoundRepository.findByGameTable_TableIdAndRoundStatus(tableId, GameRoundStatus.IN_PROGRESS).orElseThrow(() -> new ResourceNotFoundException("This table has no active round.")));
     }
 
+    /** Public-only spectator view. No player cards are part of RoundResponse. */
+    @Transactional(readOnly = true)
+    public RoundResponse spectate(Long roundId, Long spectatorId, Long selectedPlayerId) {
+        GameRound round = active(roundId);
+        if (roundPlayerRepository.findByGameRound_RoundIdAndGamePlayer_Player_PlayerId(roundId, spectatorId).isPresent()) throw new GameRuleViolationException("Seated players cannot enter spectator mode.");
+        RoundPlayer selected = state(roundId, selectedPlayerId);
+        if (selected.getRoundPlayerStatus() != RoundPlayerStatus.ACTIVE) throw new GameRuleViolationException("Select an active player to spectate.");
+        return response(round);
+    }
+
     @Transactional
     public RoundResponse takeTurn(Long roundId, Long playerId, TurnActionRequest request) {
         GameRound round = active(roundId); RoundPlayer state = current(round, playerId); String action = request.action().trim().toUpperCase(Locale.ROOT);
@@ -114,6 +125,9 @@ public class FriendlyTeenPattiService {
 
     @Transactional
     public RoundResponse leaveRound(Long roundId, Long playerId) { GameRound round = active(roundId); RoundPlayer player = state(roundId, playerId); if (player.getRoundPlayerStatus() != RoundPlayerStatus.ACTIVE) throw new GameRuleViolationException("You already dropped."); drop(round, player); return publish(round); }
+
+    @Transactional
+    public void dropDisconnectedPlayer(Long roundId, Long playerId) { GameRound round = active(roundId); RoundPlayer player = state(roundId, playerId); if (player.getRoundPlayerStatus() == RoundPlayerStatus.ACTIVE) drop(round, player); }
 
     @Transactional
     public RoundResponse requestSideShow(Long roundId, Long playerId, SideShowRequest request) {
@@ -155,7 +169,7 @@ public class FriendlyTeenPattiService {
     }
 
     private void beginBetting(GameRound round) { List<RoundPlayer> players = activePlayers(round); RoundPlayer first = players.get(RANDOM.nextInt(players.size())); round.setPhase(GamePhase.BETTING); round.setCurrentTurnGamePlayer(first.getGamePlayer()); round.setVisibilityDeadline(null); round.setTurnDeadline(LocalDateTime.now().plusSeconds(TURN_SECONDS)); gameRoundRepository.save(round); }
-    private void debit(GameRound round, RoundPlayer state, long amount, String type) { Player player = state.getGamePlayer().getPlayer(); if (player.getCoinBalance() < amount) throw new GameRuleViolationException("Insufficient virtual coins. Drop or request a loan."); player.setCoinBalance(player.getCoinBalance() - amount); playerRepository.save(player); WalletTransaction tx = new WalletTransaction(); tx.setPlayer(player); tx.setGameRound(round); tx.setTransactionType(type); tx.setAmount(-amount); tx.setBalanceAfter(player.getCoinBalance()); walletTransactionRepository.save(tx); state.setTotalContribution(state.getTotalContribution() + amount); roundPlayerRepository.save(state); round.setPot(round.getPot() + amount); gameRoundRepository.save(round); }
+    private void debit(GameRound round, RoundPlayer state, long amount, String type) { Player player = playerRepository.findWithLockByPlayerId(state.getGamePlayer().getPlayer().getPlayerId()).orElseThrow(() -> new ResourceNotFoundException("Player was not found.")); if (player.getCoinBalance() < amount) throw new GameRuleViolationException("Insufficient virtual coins. Drop or request a loan."); player.setCoinBalance(player.getCoinBalance() - amount); playerRepository.save(player); WalletTransaction tx = new WalletTransaction(); tx.setPlayer(player); tx.setGameRound(round); tx.setTransactionType(type); tx.setAmount(-amount); tx.setBalanceAfter(player.getCoinBalance()); walletTransactionRepository.save(tx); state.setTotalContribution(state.getTotalContribution() + amount); roundPlayerRepository.save(state); round.setPot(round.getPot() + amount); gameRoundRepository.save(round); }
     private void drop(GameRound round, RoundPlayer player) { player.setRoundPlayerStatus(RoundPlayerStatus.DROPPED); player.setDroppedAt(LocalDateTime.now()); roundPlayerRepository.save(player); continueOrFinish(round, player); }
     private void continueOrFinish(GameRound round, RoundPlayer previous) { List<RoundPlayer> left = activePlayers(round); if (left.size() == 1) { finish(round, left.getFirst(), false); return; } round.setPhase(GamePhase.BETTING); enterFinalTwoIfEligible(round); advance(round, previous); }
     private void advance(GameRound round, RoundPlayer previous) { List<RoundPlayer> players = activePlayers(round); int index = players.stream().map(RoundPlayer::getRoundPlayerId).toList().indexOf(previous.getRoundPlayerId()); RoundPlayer next = players.get((index + 1 + players.size()) % players.size()); round.setCurrentTurnGamePlayer(next.getGamePlayer()); round.setTurnDeadline(LocalDateTime.now().plusSeconds(TURN_SECONDS)); gameRoundRepository.save(round); }
@@ -167,7 +181,7 @@ public class FriendlyTeenPattiService {
         }
     }
     private void finishCompared(GameRound round) { finish(round, activePlayers(round).stream().max(this::compare).orElseThrow(), true); }
-    private void finish(GameRound round, RoundPlayer winner, boolean revealCards) { Player player = winner.getGamePlayer().getPlayer(); player.setCoinBalance(player.getCoinBalance() + round.getPot()); playerRepository.save(player); WalletTransaction tx = new WalletTransaction(); tx.setPlayer(player); tx.setGameRound(round); tx.setTransactionType("POT_WIN"); tx.setAmount(round.getPot()); tx.setBalanceAfter(player.getCoinBalance()); walletTransactionRepository.save(tx); round.setWinnerPlayer(player); round.setRoundStatus(GameRoundStatus.COMPLETED); round.setPhase(GamePhase.COMPLETED); round.setEndedAt(LocalDateTime.now()); round.setCurrentTurnGamePlayer(null); round.setTurnDeadline(null); gameRoundRepository.save(round); GameTable table = round.getGameTable(); table.setTableStatus(GameTableStatus.OPEN); gameTableRepository.save(table); tableRealtimePublisher.showdown(table.getTableId(), new ShowdownResponse(round.getRoundId(), player.getPlayerId(), player.getUsername(), revealCards ? "SHOWDOWN" : "LAST_PLAYER_STANDING", revealCards ? publicHands(round) : List.of())); }
+    private void finish(GameRound round, RoundPlayer winner, boolean revealCards) { Player player = playerRepository.findWithLockByPlayerId(winner.getGamePlayer().getPlayer().getPlayerId()).orElseThrow(() -> new ResourceNotFoundException("Player was not found.")); long winnings = round.getPot(); player.setCoinBalance(player.getCoinBalance() + winnings); playerRepository.save(player); WalletTransaction tx = new WalletTransaction(); tx.setPlayer(player); tx.setGameRound(round); tx.setTransactionType("POT_WIN"); tx.setAmount(winnings); tx.setBalanceAfter(player.getCoinBalance()); walletTransactionRepository.save(tx); coinBorrowingService.repayFromWinnings(round, player.getPlayerId(), winnings); round.setWinnerPlayer(player); round.setRoundStatus(GameRoundStatus.COMPLETED); round.setPhase(GamePhase.COMPLETED); round.setEndedAt(LocalDateTime.now()); round.setCurrentTurnGamePlayer(null); round.setTurnDeadline(null); gameRoundRepository.save(round); GameTable table = round.getGameTable(); table.setTableStatus(GameTableStatus.OPEN); gameTableRepository.save(table); tableRealtimePublisher.showdown(table.getTableId(), new ShowdownResponse(round.getRoundId(), player.getPlayerId(), player.getUsername(), revealCards ? "SHOWDOWN" : "LAST_PLAYER_STANDING", revealCards ? publicHands(round) : List.of())); }
     private int compare(RoundPlayer a, RoundPlayer b) { return handEvaluator.evaluate(cards(a)).compareTo(handEvaluator.evaluate(cards(b))); }
     private List<PlayerCard> cards(RoundPlayer p) { return playerCardRepository.findByGameRound_RoundIdAndGamePlayer_GamePlayerIdOrderByCardPosition(p.getGameRound().getRoundId(), p.getGamePlayer().getGamePlayerId()); }
     private List<PlayerHandResult> publicHands(GameRound r) { return activePlayers(r).stream().map(p -> new PlayerHandResult(p.getGamePlayer().getPlayer().getPlayerId(), p.getGamePlayer().getPlayer().getUsername(), handEvaluator.evaluate(cards(p)).category().name(), cards(p).stream().map(this::card).toList())).toList(); }
@@ -188,7 +202,7 @@ public class FriendlyTeenPattiService {
         }
         return response;
     }
-    private RoundResponse response(GameRound r) { List<RoundPlayerResponse> players = roundPlayerRepository.findByGameRound_RoundIdOrderByGamePlayer_SeatNumber(r.getRoundId()).stream().map(p -> new RoundPlayerResponse(p.getGamePlayer().getPlayer().getPlayerId(), p.getGamePlayer().getPlayer().getUsername(), p.getGamePlayer().getSeatNumber().intValue(), p.getVisibilityStatus().name(), p.getRoundPlayerStatus().name(), p.getTotalContribution())).toList(); SideShow pending = sideShowRepository.findTopByGameRound_RoundIdAndStatusOrderByCreatedAtDesc(r.getRoundId(), "PENDING").orElse(null); return new RoundResponse(r.getRoundId(), r.getGameTable().getTableId(), r.getRoundNumber(), r.getRoundStatus().name(), r.getPhase().name(), r.getCurrentBet(), r.getPot(), r.getCurrentTurnGamePlayer() == null ? null : r.getCurrentTurnGamePlayer().getPlayer().getPlayerId(), r.getVisibilityDeadline(), r.getTurnDeadline(), r.getForcedSameTurnsRemaining().intValue(), pending == null ? null : pending.getSideShowId(), pending == null ? null : pending.getRequesterGamePlayer().getPlayer().getPlayerId(), pending == null ? null : pending.getRequestedGamePlayer().getPlayer().getPlayerId(), players); }
+    private RoundResponse response(GameRound r) { List<RoundPlayerResponse> players = roundPlayerRepository.findByGameRound_RoundIdOrderByGamePlayer_SeatNumber(r.getRoundId()).stream().map(p -> new RoundPlayerResponse(p.getGamePlayer().getPlayer().getPlayerId(), p.getGamePlayer().getPlayer().getUsername(), p.getGamePlayer().getSeatNumber().intValue(), p.getVisibilityStatus().name(), p.getRoundPlayerStatus().name(), p.getTotalContribution(), p.getConnectionStatus().name(), p.getReconnectDeadline())).toList(); SideShow pending = sideShowRepository.findTopByGameRound_RoundIdAndStatusOrderByCreatedAtDesc(r.getRoundId(), "PENDING").orElse(null); return new RoundResponse(r.getRoundId(), r.getGameTable().getTableId(), r.getRoundNumber(), r.getRoundStatus().name(), r.getPhase().name(), r.getCurrentBet(), r.getPot(), r.getCurrentTurnGamePlayer() == null ? null : r.getCurrentTurnGamePlayer().getPlayer().getPlayerId(), r.getVisibilityDeadline(), r.getTurnDeadline(), r.getForcedSameTurnsRemaining().intValue(), pending == null ? null : pending.getSideShowId(), pending == null ? null : pending.getRequesterGamePlayer().getPlayer().getPlayerId(), pending == null ? null : pending.getRequestedGamePlayer().getPlayer().getPlayerId(), players); }
     private List<DeckCard> newDeck() { List<DeckCard> deck = new ArrayList<>(52); for (String suit : SUITS) for (String rank : RANKS) deck.add(new DeckCard(rank, suit)); return deck; }
     private record DeckCard(String rank, String suit) { }
 }

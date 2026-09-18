@@ -14,6 +14,11 @@ public class TableRealtimePublisher {
         applicationEventPublisher.publishEvent(TableGameEvent.tableUpdated(tableId));
     }
 
+    /** Signals clients to refresh their authenticated borrowing state. */
+    public void borrowingUpdated(Long tableId) {
+        applicationEventPublisher.publishEvent(TableGameEvent.borrowingUpdated(tableId));
+    }
+
     public void roundStarted(com.cardgame.platform.dto.RoundResponse round) {
         applicationEventPublisher.publishEvent(TableGameEvent.roundStarted(round));
     }
