@@ -36,6 +36,14 @@ public class RoundPlayer {
     @Column(name = "total_contribution", nullable = false)
     private Long totalContribution = 0L;
 
+    /** Number of SAME actions this player has used at the current bet. */
+    @Column(name = "same_bet_actions", nullable = false)
+    private Byte sameBetActions = 0;
+
+    /** Number of bets this player has used after the 15x final-two threshold. */
+    @Column(name = "final_bet_turns", nullable = false)
+    private Byte finalBetTurns = 0;
+
     @Column(name = "selected_at")
     private LocalDateTime selectedAt;
 

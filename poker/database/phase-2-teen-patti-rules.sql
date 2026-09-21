@@ -13,6 +13,7 @@ ALTER TABLE game_rounds
     ADD COLUMN visibility_deadline DATETIME NULL AFTER current_turn_game_player_id,
     ADD COLUMN turn_deadline DATETIME NULL AFTER visibility_deadline,
     ADD COLUMN forced_same_turns_remaining TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER turn_deadline,
+    ADD COLUMN final_two_started BOOLEAN NOT NULL DEFAULT FALSE AFTER forced_same_turns_remaining,
     ADD CONSTRAINT fk_game_rounds_current_turn
         FOREIGN KEY (current_turn_game_player_id) REFERENCES game_players (game_player_id)
         ON DELETE RESTRICT ON UPDATE RESTRICT;
@@ -24,6 +25,8 @@ CREATE TABLE IF NOT EXISTS round_players (
     visibility_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     round_player_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     total_contribution BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    same_bet_actions TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    final_bet_turns TINYINT UNSIGNED NOT NULL DEFAULT 0,
     selected_at DATETIME NULL,
     dropped_at DATETIME NULL,
     PRIMARY KEY (round_player_id),

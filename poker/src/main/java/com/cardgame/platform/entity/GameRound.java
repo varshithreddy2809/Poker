@@ -51,6 +51,9 @@ public class GameRound {
     @Column(name = "forced_same_turns_remaining", nullable = false)
     private Byte forcedSameTurnsRemaining = 0;
 
+    @Column(name = "final_two_started", nullable = false)
+    private Boolean finalTwoStarted = false;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "winner_player_id")
     private Player winnerPlayer;

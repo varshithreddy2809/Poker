@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test:sounds": "node --test src/utils/soundManager.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

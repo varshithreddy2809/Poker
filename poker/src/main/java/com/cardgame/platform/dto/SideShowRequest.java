@@ -1,6 +1,8 @@
 package com.cardgame.platform.dto;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
-public record SideShowRequest(@NotNull Long targetPlayerId) {
+/** The proposed table bet. The server selects the Side Show target. */
+public record SideShowRequest(@NotNull @Positive Long amount) {
 }

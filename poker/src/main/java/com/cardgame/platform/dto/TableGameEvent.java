@@ -15,7 +15,7 @@ public record TableGameEvent(
         return new TableGameEvent("ROUND_STARTED", round.tableId(), round, null);
     }
 
-    public static TableGameEvent showdown(Long tableId, ShowdownResponse showdown) {
-        return new TableGameEvent("SHOWDOWN", tableId, null, showdown);
+    public static TableGameEvent showdown(RoundResponse round, ShowdownResponse showdown) {
+        return new TableGameEvent("SHOWDOWN", round.tableId(), round, showdown);
     }
 }

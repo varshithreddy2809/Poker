@@ -18,7 +18,7 @@ public class TableRealtimePublisher {
         applicationEventPublisher.publishEvent(TableGameEvent.roundStarted(round));
     }
 
-    public void showdown(Long tableId, com.cardgame.platform.dto.ShowdownResponse showdown) {
-        applicationEventPublisher.publishEvent(TableGameEvent.showdown(tableId, showdown));
+    public void showdown(com.cardgame.platform.dto.RoundResponse round, com.cardgame.platform.dto.ShowdownResponse showdown) {
+        applicationEventPublisher.publishEvent(TableGameEvent.showdown(round, showdown));
     }
 }
