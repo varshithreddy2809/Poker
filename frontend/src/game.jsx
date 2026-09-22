@@ -90,21 +90,46 @@ function Auth({ setSession, tell }) {
     try {
       const credentials = { username: form.username.trim(), password: form.password }; let player;
       if (register) player = await api("/players", null, "POST", { ...form, username: credentials.username });
-      else { const id = sessionStorage.getItem(`aceverse:${credentials.username}`); if (!id) throw new Error("Register this player in this browser before signing in."); player = await api(`/players/${id}`, credentials); }
-      sessionStorage.setItem(`aceverse:${player.username}`, player.playerId); setSession({ credentials, player }); tell("");
+      else player = await api("/players/me", credentials);
+      setSession({ credentials, player }); tell("");
     } catch (error) { tell(error.message, true); } finally { setBusy(false); }
   }
   return <section className="panel auth-panel"><p className="eyebrow">Teen Patti - virtual coins only</p><h1>ACEVERSE</h1><div className="tabs"><button className={!register ? "selected" : ""} onClick={() => setRegister(false)}>Sign in</button><button className={register ? "selected" : ""} onClick={() => setRegister(true)}>Register</button></div><form className="form-grid" onSubmit={submit}><label>Username<input minLength="3" value={form.username} onChange={update("username")} required /></label>{register && <label>Email<input type="email" value={form.email} onChange={update("email")} required /></label>}<label>Password<input type="password" minLength="8" value={form.password} onChange={update("password")} required /></label><button className="primary wide" disabled={busy}>{register ? "Create player" : "Enter lobby"}</button></form></section>;
 }
 
-function Lobby({ session, table, setTable, start, signOut, tell }) {
-  const [name, setName] = useState(`${session.player.username}'s table`); const [bet, setBet] = useState(100); const [max, setMax] = useState(4); const [tableId, setTableId] = useState(""); const [busy, setBusy] = useState(false);
+function Lobby({ session, table, setTable, start, signOut, tell, lobbyRefreshVersion }) {
+  const [name, setName] = useState(`${session.player.username}'s table`); const [bet, setBet] = useState(100); const [max, setMax] = useState(4); const [tableId, setTableId] = useState(""); const [busy, setBusy] = useState(false); const [availableTables, setAvailableTables] = useState([]);
+  useEffect(() => { api("/tables", session.credentials).then(setAvailableTables).catch((error) => tell(error.message, true)); }, [session.credentials, tell, lobbyRefreshVersion]);
   async function create(event) { event.preventDefault(); setBusy(true); try { setTable(await api("/tables", session.credentials, "POST", { hostPlayerId: session.player.playerId, tableName: name, entryBet: Number(bet), maxPlayers: Number(max) })); } catch (error) { tell(error.message, true); } finally { setBusy(false); } }
   async function join(event) { event.preventDefault(); setBusy(true); try { setTable(await api(`/tables/${tableId}/players`, session.credentials, "POST", { playerId: session.player.playerId })); } catch (error) { tell(error.message, true); } finally { setBusy(false); } }
   function confirmSignOut() { if (window.confirm("Sign out of ACEVERSE?")) if (window.confirm("Final confirmation: end this session now?")) signOut(); }
-  if (!table) return <section className="lobby-page"><header className="lobby-intro"><div className="lobby-back-action"><button className="text-button" type="button" onClick={confirmSignOut}>← Back / Sign out</button></div></header><div className="lobby-grid"><form className="panel form-grid" onSubmit={create}><p className="eyebrow">Host a table</p><h2>Create game</h2><label>Table name<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>Starting bet<input type="number" min="1" value={bet} onChange={(e) => setBet(e.target.value)} required /></label><label>Maximum players<select value={max} onChange={(e) => setMax(e.target.value)}>{[2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n}>{n}</option>)}</select></label><button className="primary" disabled={busy}>Create</button></form><form className="panel form-grid" onSubmit={join}><p className="eyebrow">Join game</p><h2>Enter table ID</h2><label>Table ID<input type="number" min="1" value={tableId} onChange={(e) => setTableId(e.target.value)} required /></label><button className="secondary" disabled={busy}>Join table</button></form></div></section>;
+  if (!table) return <section className="lobby-page"><header className="lobby-intro"><div className="lobby-back-action"><button className="text-button" type="button" onClick={confirmSignOut}>← Back / Sign out</button></div></header><div className="lobby-grid"><form className="panel form-grid" onSubmit={create}><p className="eyebrow">Host a table</p><h2>Create game</h2><label>Table name<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>Starting bet<input type="number" min="1" value={bet} onChange={(e) => setBet(e.target.value)} required /></label><label>Maximum players<select value={max} onChange={(e) => setMax(e.target.value)}>{[2, 3, 4, 5, 6, 7, 8].map((n) => <option key={n}>{n}</option>)}</select></label><button className="primary" disabled={busy}>Create</button></form><form className="panel form-grid" onSubmit={join}><p className="eyebrow">Join game</p><h2>Enter table ID</h2><label>Table ID<input type="number" min="1" value={tableId} onChange={(e) => setTableId(e.target.value)} required /></label><button className="secondary" disabled={busy}>Join table</button></form></div><section className="panel"><h2>Live tables</h2><div className="seat-list">{availableTables.map((item) => <button className="seat" type="button" key={item.tableId} onClick={() => setTableId(String(item.tableId))}>#{item.tableId} {item.tableName} · {item.players.length}/{item.maxPlayers} · {item.status}</button>)}</div></section></section>;
   const host = table.hostPlayerId === session.player.playerId;
   return <section className="panel table-lobby"><div className="table-heading"><div><button className="text-button" type="button" onClick={() => setTable(null)}>← Back to lobby</button><p className="eyebrow">Table #{table.tableId} - starting bet {table.entryBet}</p><h2>{table.tableName}</h2></div><span className={`status ${table.status.toLowerCase()}`}>{table.status}</span></div><p className="muted">Share this table ID. Each new player receives 10,000 virtual coins.</p><div className="seat-list">{table.players.map((p) => <div className="seat" key={p.playerId}><span className="seat-number">{p.seatNumber}</span>{p.username}{p.playerId === table.hostPlayerId && <em>Host</em>}</div>)}</div><div className="actions">{host && <button className="primary" disabled={table.players.length < 2 || busy} onClick={start}>{table.players.length < 2 ? "Waiting for player" : "Deal cards"}</button>}<button className="secondary" onClick={async () => { try { setTable(await api(`/tables/${table.tableId}`, session.credentials)); } catch (e) { tell(e.message, true); } }}>Refresh</button><button className="text-button" type="button" onClick={confirmSignOut}>Sign out</button></div></section>;
+}
+
+function AdminDashboard({ session, tell, close, refreshVersion }) {
+  const [tables, setTables] = useState([]); const [selected, setSelected] = useState(null); const [history, setHistory] = useState([]); const [form, setForm] = useState({ targetPlayerId: "", amount: "", reason: "" }); const [busy, setBusy] = useState(false); const submittingRef = useRef(false);
+  const operationId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+  const load = useCallback(async () => {
+    try {
+      const [nextTables, nextHistory] = await Promise.all([api("/admin/tables", session.credentials), api("/admin/coin-transactions", session.credentials)]);
+      setTables(nextTables); setHistory(nextHistory);
+      setSelected((current) => current ? nextTables.find((table) => table.tableId === current.tableId) || null : null);
+    } catch (error) { tell(error.message, true); }
+  }, [session.credentials, tell]);
+  // The asynchronous request, rather than the render itself, owns these state updates.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void load(); }, [load, refreshVersion]);
+  async function distribute(path, body) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setBusy(true);
+    try { await api(path, session.credentials, "POST", { ...body, operationId: operationId() }); await load(); tell("Virtual coins distributed."); }
+    catch (error) { tell(error.message, true); } finally { submittingRef.current = false; setBusy(false); }
+  }
+  const update = (name) => (event) => setForm((current) => ({ ...current, [name]: event.target.value }));
+  return <section className="lobby-page"><header className="lobby-intro"><button className="text-button" type="button" onClick={close}>← Back to lobby</button><p className="eyebrow">Server-authorized administration</p><h1>ADMIN DASHBOARD</h1></header><div className="panel"><h2>Tables</h2><div className="seat-list">{tables.map((table) => <button className="seat" type="button" key={table.tableId} onClick={() => setSelected(table)}>#{table.tableId} {table.tableName} · {table.status} · Bet {table.currentBet ?? table.entryBet} · Pot {table.pot ?? 0}</button>) || <p className="muted">No tables.</p>}</div></div>{selected && <section className="panel table-lobby"><div className="table-heading"><div><p className="eyebrow">Table #{selected.tableId} · {selected.phase || "No round"}</p><h2>{selected.tableName}</h2></div><span className={`status ${selected.status.toLowerCase()}`}>{selected.status}</span></div><p className="muted">Current bet {selected.currentBet ?? selected.entryBet} · Pot {selected.pot ?? 0}. Cards are never shown here.</p><div className="seat-list">{selected.players.map((player) => <div className="seat" key={player.playerId}>#{player.seatNumber} {player.username} · {player.status} · {player.coinBalance} coins · contribution {player.totalContribution}<button className="text-button" type="button" onClick={() => setForm((current) => ({ ...current, targetPlayerId: String(player.playerId) }))}>Select</button></div>)}</div><div className="lobby-grid"><div className="form-grid"><h3>Coin distribution</h3><label>Selected player<select value={form.targetPlayerId} onChange={update("targetPlayerId")}><option value="">Choose player</option>{selected.players.map((player) => <option value={player.playerId} key={player.playerId}>{player.username}</option>)}</select></label><label>Amount<input type="number" min="1" value={form.amount} onChange={update("amount")} /></label><label>Reason<input maxLength="250" value={form.reason} onChange={update("reason")} /></label><button className="primary" disabled={busy || !form.targetPlayerId || !form.amount || !form.reason} onClick={() => distribute("/admin/coins/player", { targetPlayerId: Number(form.targetPlayerId), amount: Number(form.amount), reason: form.reason })}>Distribute Coins</button><button className="secondary" disabled={busy || !form.amount || !form.reason} onClick={() => distribute(`/admin/tables/${selected.tableId}/coins`, { amount: Number(form.amount), reason: form.reason })}>Distribute to All Players</button></div></div></section>}<section className="panel"><h2>Admin coin history</h2><div className="seat-list">{history.map((entry) => <div className="seat" key={entry.transactionId}>#{entry.transactionId} · {entry.adminUsername} → {entry.targetUsername} · +{entry.amount} · {entry.operationType}{entry.tableId ? ` · Table #${entry.tableId}` : ""} · {entry.reason}</div>)}</div></section></section>;
 }
 
 function BettingControls({ round, canSame, canShow, confirmLeave, run }) {
@@ -142,10 +167,27 @@ function Table({ session, table, round, hand, showdown, live, run, leaveRound, p
 }
 
 export default function Game() {
-  const [session, setSession] = useState(null); const [table, setTable] = useState(null); const [round, setRound] = useState(null); const [hand, setHand] = useState(null); const [showdown, setShowdown] = useState(null); const [live, setLive] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
-  const sessionCredentials = session?.credentials; const sessionPlayerId = session?.player?.playerId;
+  const [session, setSession] = useState(null); const [table, setTable] = useState(null); const [round, setRound] = useState(null); const [hand, setHand] = useState(null); const [showdown, setShowdown] = useState(null); const [live, setLive] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [adminView, setAdminView] = useState(() => location.pathname === "/admin"); const [adminRefreshVersion, setAdminRefreshVersion] = useState(0); const [lobbyRefreshVersion, setLobbyRefreshVersion] = useState(0);
+  const sessionCredentials = session?.credentials; const sessionPlayerId = session?.player?.playerId; const sessionRole = session?.player?.role;
   const { soundEnabled, toggleSound, unlockSound, playSound } = useGameSounds(round, showdown, sessionPlayerId);
   const tell = useCallback((text, isError = false) => { setError(isError ? text : ""); setNotice(isError ? "" : text); }, []);
+  useEffect(() => {
+    if (!sessionCredentials || !sessionPlayerId) return undefined;
+    let active = true;
+    const client = new Client({ brokerURL: wsUrl(), reconnectDelay: 3000, connectHeaders: { login: sessionCredentials.username, passcode: sessionCredentials.password }, debug: () => {},
+      onConnect: () => {
+        client.subscribe("/user/queue/balance", (message) => {
+          try {
+            const update = JSON.parse(message.body);
+            if (active && update.playerId === sessionPlayerId) setSession((current) => current ? { ...current, player: { ...current.player, coinBalance: update.coinBalance } } : current);
+          } catch (error) { if (active) tell(error.message || "Unable to process a balance update.", true); }
+        });
+        client.subscribe("/topic/lobby", () => { if (active) { setLobbyRefreshVersion((version) => version + 1); if (sessionRole === "ADMIN") setAdminRefreshVersion((version) => version + 1); } });
+      },
+    });
+    client.activate();
+    return () => { active = false; void client.deactivate(); };
+  }, [sessionCredentials, sessionPlayerId, sessionRole, tell]);
   useEffect(() => {
     if (!sessionCredentials || !sessionPlayerId || !table?.tableId) return undefined;
 
@@ -235,6 +277,9 @@ export default function Game() {
       setRound(next); setSession((current) => current ? { ...current, player } : current); return true;
     } catch (e) { playSound("error", `error:${path}:${Date.now()}`); tell(e.message, true); return false; }
   }
-  function signOut() { setSession(null); setTable(null); setRound(null); setHand(null); setShowdown(null); }
-  return <main className="app-shell"><header className="brand">ACEVERSE <small>Authoritative Teen Patti</small>{session && <span className="identity">{session.player.username} - {session.player.coinBalance} coins</span>}<button className="text-button sound-toggle" type="button" onClick={toggleSound}>{soundEnabled ? "🔊 Sound ON" : "🔇 Sound OFF"}</button></header><Message error={error} notice={notice} />{!session ? <Auth setSession={setSession} tell={tell} /> : !round ? <Lobby session={session} table={table} setTable={setTable} start={start} signOut={signOut} tell={tell} /> : <Table session={session} table={table} round={round} hand={hand} showdown={showdown} live={live} run={run} leaveRound={() => run(`/rounds/${round.roundId}/leave`)} playAgain={() => { setRound(null); setHand(null); setShowdown(null); }} />}</main>;
+  function signOut() { setSession(null); setTable(null); setRound(null); setHand(null); setShowdown(null); setAdminView(false); history.replaceState(null, "", "/"); }
+  function openAdmin() { history.pushState(null, "", "/admin"); setAdminView(true); }
+  function closeAdmin() { history.pushState(null, "", "/"); setAdminView(false); }
+  const isAdmin = session?.player?.role === "ADMIN";
+  return <main className="app-shell"><header className="brand">ACEVERSE <small>Authoritative Teen Patti</small>{session && <span className="identity">{session.player.username} - {session.player.coinBalance} coins</span>}{isAdmin && <button className="text-button" type="button" onClick={openAdmin}>Admin dashboard</button>}<button className="text-button sound-toggle" type="button" onClick={toggleSound}>{soundEnabled ? "🔊 Sound ON" : "🔇 Sound OFF"}</button></header><Message error={error} notice={notice} />{!session ? <Auth setSession={setSession} tell={tell} /> : adminView && isAdmin ? <AdminDashboard session={session} tell={tell} close={closeAdmin} refreshVersion={adminRefreshVersion} /> : !round ? <Lobby session={session} table={table} setTable={setTable} start={start} signOut={signOut} tell={tell} lobbyRefreshVersion={lobbyRefreshVersion} /> : <Table session={session} table={table} round={round} hand={hand} showdown={showdown} live={live} run={run} leaveRound={() => run(`/rounds/${round.roundId}/leave`)} playAgain={() => { setRound(null); setHand(null); setShowdown(null); }} />}</main>;
 }

@@ -98,6 +98,13 @@ public class GameTableService {
         return toResponse(gameTable, gamePlayerRepository.findByGameTable_TableIdOrderBySeatNumber(tableId));
     }
 
+    @Transactional(readOnly = true)
+    public List<GameTableResponse> list() {
+        return gameTableRepository.findAll().stream()
+                .map(table -> toResponse(table, gamePlayerRepository.findByGameTable_TableIdOrderBySeatNumber(table.getTableId())))
+                .toList();
+    }
+
     public GameTable getTable(Long tableId) {
         return gameTableRepository.findById(tableId)
                 .orElseThrow(() -> new ResourceNotFoundException("Table " + tableId + " was not found."));

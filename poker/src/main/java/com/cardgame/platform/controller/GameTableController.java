@@ -9,6 +9,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 /** REST API for the no-betting friendly Teen Patti game. */
 @RestController
 @RequestMapping("/api")
@@ -27,6 +29,11 @@ public class GameTableController {
     @GetMapping("/tables/{tableId}")
     public GameTableResponse getTable(@PathVariable Long tableId) {
         return gameTableService.get(tableId);
+    }
+
+    @GetMapping("/tables")
+    public List<GameTableResponse> listTables() {
+        return gameTableService.list();
     }
 
     @PostMapping("/tables/{tableId}/players")

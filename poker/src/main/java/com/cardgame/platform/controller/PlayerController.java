@@ -21,6 +21,11 @@ public class PlayerController {
         return playerService.register(request);
     }
 
+    @GetMapping("/me")
+    public PlayerResponse getCurrentPlayer(Authentication authentication) {
+        return playerService.getCurrentPlayer(authentication.getName());
+    }
+
     @GetMapping("/{playerId}")
     public PlayerResponse get(@PathVariable Long playerId, Authentication authentication) {
         playerService.requireCaller(authentication.getName(), playerId);

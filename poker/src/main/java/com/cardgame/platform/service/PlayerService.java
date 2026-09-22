@@ -3,6 +3,7 @@ package com.cardgame.platform.service;
 import com.cardgame.platform.dto.PlayerResponse;
 import com.cardgame.platform.dto.RegisterPlayerRequest;
 import com.cardgame.platform.entity.AccountStatus;
+import com.cardgame.platform.entity.AccountRole;
 import com.cardgame.platform.entity.Player;
 import com.cardgame.platform.exception.GameRuleViolationException;
 import com.cardgame.platform.exception.ResourceNotFoundException;
@@ -38,12 +39,23 @@ public class PlayerService implements UserDetailsService {
         // Development-friendly virtual starting balance. No real money is used.
         player.setCoinBalance(10_000L);
         player.setAccountStatus(AccountStatus.ACTIVE);
+        player.setAccountRole(AccountRole.PLAYER);
         return toResponse(playerRepository.save(player));
     }
 
     @Transactional(readOnly = true)
     public PlayerResponse getPlayer(Long playerId) {
         return toResponse(getActivePlayer(playerId));
+    }
+
+    @Transactional(readOnly = true)
+    public PlayerResponse getCurrentPlayer(String username) {
+        Player player = playerRepository.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Authenticated player was not found."));
+        if (player.getAccountStatus() != AccountStatus.ACTIVE) {
+            throw new GameRuleViolationException("This player account is not active.");
+        }
+        return toResponse(player);
     }
 
     public Player getActivePlayer(Long playerId) {
@@ -62,7 +74,7 @@ public class PlayerService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("Unknown player."));
         return User.withUsername(player.getUsername())
                 .password(player.getPasswordHash())
-                .authorities("PLAYER")
+                .authorities(player.getAccountRole().name())
                 .disabled(player.getAccountStatus() != AccountStatus.ACTIVE)
                 .build();
     }
@@ -85,6 +97,6 @@ public class PlayerService implements UserDetailsService {
 
     private PlayerResponse toResponse(Player player) {
         return new PlayerResponse(player.getPlayerId(), player.getUsername(), player.getEmail(),
-                player.getCoinBalance(), player.getAccountStatus().name());
+                player.getCoinBalance(), player.getAccountStatus().name(), player.getAccountRole().name());
     }
 }
