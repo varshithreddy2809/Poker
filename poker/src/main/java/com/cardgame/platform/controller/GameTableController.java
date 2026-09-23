@@ -43,6 +43,12 @@ public class GameTableController {
         return gameTableService.join(tableId, request);
     }
 
+    @PostMapping("/tables/{tableId}/play-again")
+    public GameTableResponse setReady(@PathVariable Long tableId, @Valid @RequestBody ReadyRequest request,
+                                      Authentication authentication) {
+        return gameTableService.setReady(tableId, currentPlayerId(authentication), request.ready());
+    }
+
     @PostMapping("/tables/{tableId}/rounds")
     @ResponseStatus(HttpStatus.CREATED)
     public RoundResponse startRound(@PathVariable Long tableId, @Valid @RequestBody StartRoundRequest request,

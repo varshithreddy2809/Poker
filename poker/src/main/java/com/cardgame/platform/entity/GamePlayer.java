@@ -32,6 +32,10 @@ public class GamePlayer {
     @Column(name = "player_status", nullable = false, length = 20)
     private GamePlayerStatus playerStatus = GamePlayerStatus.JOINED;
 
+    /** Server-owned waiting-room roster for the next deal. */
+    @Column(name = "next_round_ready", nullable = false)
+    private Boolean nextRoundReady = false;
+
     @Column(name = "joined_at", insertable = false, updatable = false)
     private LocalDateTime joinedAt;
 

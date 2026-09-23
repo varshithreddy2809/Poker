@@ -37,11 +37,15 @@ public class FriendlyTeenPattiService {
 
     @Transactional
     public RoundResponse startRound(Long tableId, StartRoundRequest request) {
-        GameTable table = gameTableService.getTable(tableId);
+        GameTable table = gameTableRepository.findByTableIdForUpdate(tableId)
+                .orElseThrow(() -> new ResourceNotFoundException("Table " + tableId + " was not found."));
         if (!table.getHostPlayer().getPlayerId().equals(request.hostPlayerId())) throw new GameRuleViolationException("Only the host can start a round.");
         if (table.getTableStatus() != GameTableStatus.OPEN) throw new GameRuleViolationException("Finish the current round before starting another one.");
         List<GamePlayer> participants = gamePlayerRepository.findByGameTable_TableIdAndPlayerStatusOrderBySeatNumber(tableId, GamePlayerStatus.JOINED);
         if (participants.size() < 2) throw new GameRuleViolationException("At least two players are needed to start.");
+        if (participants.stream().anyMatch(player -> !Boolean.TRUE.equals(player.getNextRoundReady()))) {
+            throw new GameRuleViolationException("All players must be ready before dealing cards.");
+        }
 
         GameRound round = new GameRound();
         round.setGameTable(table); round.setRoundNumber(gameRoundRepository.findTopByGameTable_TableIdOrderByRoundNumberDesc(tableId).map(r -> r.getRoundNumber() + 1).orElse(1));
@@ -226,14 +230,16 @@ public class FriendlyTeenPattiService {
     private boolean allFinalTurnsUsed(GameRound round) { return activePlayers(round).stream().allMatch(player -> player.getFinalBetTurns() >= FINAL_BET_TURN_LIMIT); }
     private long finalTwoThreshold(GameRound round) { return Math.multiplyExact(round.getGameTable().getEntryBet(), 15L); }
     private void finishCompared(GameRound round) { finish(round, activePlayers(round).stream().max(this::compare).orElseThrow(), true); }
-    private void finish(GameRound round, RoundPlayer winner, boolean revealCards) { Player player = winner.getGamePlayer().getPlayer(); player.setCoinBalance(player.getCoinBalance() + round.getPot()); playerRepository.save(player); WalletTransaction tx = new WalletTransaction(); tx.setPlayer(player); tx.setGameRound(round); tx.setTransactionType("POT_WIN"); tx.setAmount(round.getPot()); tx.setBalanceAfter(player.getCoinBalance()); walletTransactionRepository.save(tx); round.setWinnerPlayer(player); round.setRoundStatus(GameRoundStatus.COMPLETED); round.setPhase(GamePhase.COMPLETED); round.setEndedAt(LocalDateTime.now()); round.setCurrentTurnGamePlayer(null); round.setTurnDeadline(null); gameRoundRepository.save(round); GameTable table = round.getGameTable(); table.setTableStatus(GameTableStatus.OPEN); gameTableRepository.save(table); tableRealtimePublisher.showdown(response(round), new ShowdownResponse(round.getRoundId(), player.getPlayerId(), player.getUsername(), revealCards ? "SHOWDOWN" : "LAST_PLAYER_STANDING", revealCards ? publicHands(round) : List.of())); }
+    private void finish(GameRound round, RoundPlayer winner, boolean revealCards) { Player player = winner.getGamePlayer().getPlayer(); player.setCoinBalance(player.getCoinBalance() + round.getPot()); playerRepository.save(player); WalletTransaction tx = new WalletTransaction(); tx.setPlayer(player); tx.setGameRound(round); tx.setTransactionType("POT_WIN"); tx.setAmount(round.getPot()); tx.setBalanceAfter(player.getCoinBalance()); walletTransactionRepository.save(tx); round.setWinnerPlayer(player); round.setRoundStatus(GameRoundStatus.COMPLETED); round.setPhase(GamePhase.COMPLETED); round.setEndedAt(LocalDateTime.now()); round.setCurrentTurnGamePlayer(null); round.setTurnDeadline(null); gameRoundRepository.save(round); GameTable table = round.getGameTable(); table.setTableStatus(GameTableStatus.OPEN); gamePlayerRepository.findByGameTable_TableIdAndPlayerStatusOrderBySeatNumber(table.getTableId(), GamePlayerStatus.JOINED).forEach(seat -> seat.setNextRoundReady(false)); gameTableRepository.save(table); tableRealtimePublisher.showdown(response(round), new ShowdownResponse(round.getRoundId(), player.getPlayerId(), player.getUsername(), revealCards ? "SHOWDOWN" : "LAST_PLAYER_STANDING", revealCards ? publicHands(round) : List.of())); }
     private int compare(RoundPlayer a, RoundPlayer b) { return handEvaluator.evaluate(cards(a)).compareTo(handEvaluator.evaluate(cards(b))); }
     private List<PlayerCard> cards(RoundPlayer p) { return playerCardRepository.findByGameRound_RoundIdAndGamePlayer_GamePlayerIdOrderByCardPosition(p.getGameRound().getRoundId(), p.getGamePlayer().getGamePlayerId()); }
     private List<PlayerHandResult> publicHands(GameRound r) { return activePlayers(r).stream().map(p -> new PlayerHandResult(p.getGamePlayer().getPlayer().getPlayerId(), p.getGamePlayer().getPlayer().getUsername(), handEvaluator.evaluate(cards(p)).category().name(), cards(p).stream().map(this::card).toList())).toList(); }
     private List<RoundPlayer> activePlayers(GameRound r) { return roundPlayerRepository.findByGameRound_RoundIdAndRoundPlayerStatusOrderByGamePlayer_SeatNumber(r.getRoundId(), RoundPlayerStatus.ACTIVE); }
     private List<RoundPlayer> showEligiblePlayers(GameRound round) { return activePlayers(round).stream().filter(player -> player.getGamePlayer().getPlayerStatus() == GamePlayerStatus.JOINED).toList(); }
     private RoundPlayer nextActivePlayer(GameRound round, RoundPlayer requester) {
-        List<RoundPlayer> players = activePlayers(round);
+        List<RoundPlayer> players = activePlayers(round).stream()
+                .filter(player -> player.getGamePlayer().getPlayerStatus() == GamePlayerStatus.JOINED)
+                .toList();
         int requesterIndex = players.stream().map(RoundPlayer::getRoundPlayerId).toList().indexOf(requester.getRoundPlayerId());
         if (requesterIndex < 0 || players.size() < 2) throw new GameRuleViolationException("No active player is available for a Side Show.");
         return players.get((requesterIndex + 1) % players.size());

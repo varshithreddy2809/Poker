@@ -51,6 +51,7 @@ public class GameTableService {
         hostSeat.setPlayer(host);
         hostSeat.setSeatNumber((byte) 1);
         hostSeat.setPlayerStatus(GamePlayerStatus.JOINED);
+        hostSeat.setNextRoundReady(false);
         gamePlayerRepository.save(hostSeat);
 
         GameTableResponse response = toResponse(gameTable, List.of(hostSeat));
@@ -84,6 +85,7 @@ public class GameTableService {
         gamePlayer.setPlayer(player);
         gamePlayer.setSeatNumber((byte) seat);
         gamePlayer.setPlayerStatus(GamePlayerStatus.JOINED);
+        gamePlayer.setNextRoundReady(false);
         gamePlayerRepository.save(gamePlayer);
 
         currentPlayers.add(gamePlayer);
@@ -96,6 +98,25 @@ public class GameTableService {
     public GameTableResponse get(Long tableId) {
         GameTable gameTable = getTable(tableId);
         return toResponse(gameTable, gamePlayerRepository.findByGameTable_TableIdOrderBySeatNumber(tableId));
+    }
+
+    @Transactional
+    public GameTableResponse setReady(Long tableId, Long playerId, boolean ready) {
+        GameTable table = gameTableRepository.findByTableIdForUpdate(tableId)
+                .orElseThrow(() -> new ResourceNotFoundException("Table " + tableId + " was not found."));
+        if (table.getTableStatus() != GameTableStatus.OPEN) {
+            throw new GameRuleViolationException("Ready status can be changed only while waiting for a round.");
+        }
+        GamePlayer seat = gamePlayerRepository.findByGameTable_TableIdAndPlayer_PlayerId(tableId, playerId)
+                .orElseThrow(() -> new ResourceNotFoundException("You do not have a seat at this table."));
+        if (seat.getPlayerStatus() != GamePlayerStatus.JOINED) {
+            throw new GameRuleViolationException("Only seated players can change ready status.");
+        }
+        seat.setNextRoundReady(ready);
+        gamePlayerRepository.save(seat);
+        GameTableResponse response = toResponse(table, gamePlayerRepository.findByGameTable_TableIdOrderBySeatNumber(tableId));
+        tableRealtimePublisher.tableUpdated(tableId);
+        return response;
     }
 
     @Transactional(readOnly = true)
@@ -130,7 +151,7 @@ public class GameTableService {
     private GameTableResponse toResponse(GameTable table, List<GamePlayer> players) {
         List<TablePlayerResponse> playerResponses = players.stream()
                 .map(player -> new TablePlayerResponse(player.getPlayer().getPlayerId(), player.getPlayer().getUsername(),
-                        player.getSeatNumber().intValue(), player.getPlayerStatus().name()))
+                        player.getSeatNumber().intValue(), player.getPlayerStatus().name(), Boolean.TRUE.equals(player.getNextRoundReady())))
                 .toList();
         return new GameTableResponse(table.getTableId(), table.getTableName(), table.getGameType().getCode(),
                 table.getHostPlayer().getPlayerId(), table.getEntryBet(), table.getMaxPlayers().intValue(),
