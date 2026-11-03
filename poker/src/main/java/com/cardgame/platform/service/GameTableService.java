@@ -7,6 +7,8 @@ import com.cardgame.platform.exception.ResourceNotFoundException;
 import com.cardgame.platform.repository.GamePlayerRepository;
 import com.cardgame.platform.repository.GameTableRepository;
 import com.cardgame.platform.repository.GameTypeRepository;
+import com.cardgame.platform.repository.GameRoundRepository;
+import com.cardgame.platform.repository.RoundPlayerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +25,8 @@ public class GameTableService {
     private final GameTableRepository gameTableRepository;
     private final GameTypeRepository gameTypeRepository;
     private final GamePlayerRepository gamePlayerRepository;
+    private final GameRoundRepository gameRoundRepository;
+    private final RoundPlayerRepository roundPlayerRepository;
     private final PlayerService playerService;
     private final TableRealtimePublisher tableRealtimePublisher;
 
@@ -149,12 +153,15 @@ public class GameTableService {
     }
 
     private GameTableResponse toResponse(GameTable table, List<GamePlayer> players) {
+        GameRound latestRound = gameRoundRepository.findTopByGameTable_TableIdOrderByRoundNumberDesc(table.getTableId()).orElse(null);
+        boolean replayWaiting = latestRound != null && latestRound.getRoundStatus() == GameRoundStatus.COMPLETED;
         List<TablePlayerResponse> playerResponses = players.stream()
                 .map(player -> new TablePlayerResponse(player.getPlayer().getPlayerId(), player.getPlayer().getUsername(),
-                        player.getSeatNumber().intValue(), player.getPlayerStatus().name(), Boolean.TRUE.equals(player.getNextRoundReady())))
+                        player.getSeatNumber().intValue(), player.getPlayerStatus().name(), Boolean.TRUE.equals(player.getNextRoundReady()),
+                        replayWaiting && roundPlayerRepository.existsByGameRound_RoundIdAndGamePlayer_GamePlayerId(latestRound.getRoundId(), player.getGamePlayerId())))
                 .toList();
         return new GameTableResponse(table.getTableId(), table.getTableName(), table.getGameType().getCode(),
                 table.getHostPlayer().getPlayerId(), table.getEntryBet(), table.getMaxPlayers().intValue(),
-                table.getTableStatus().name(), playerResponses);
+                table.getTableStatus().name(), replayWaiting, playerResponses);
     }
 }

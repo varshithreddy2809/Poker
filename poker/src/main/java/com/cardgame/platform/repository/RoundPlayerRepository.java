@@ -12,4 +12,5 @@ public interface RoundPlayerRepository extends JpaRepository<RoundPlayer, Long> 
     List<RoundPlayer> findByGameRound_RoundIdAndRoundPlayerStatusOrderByGamePlayer_SeatNumber(Long roundId, RoundPlayerStatus status);
     Optional<RoundPlayer> findByGameRound_RoundIdAndGamePlayer_Player_PlayerId(Long roundId, Long playerId);
     Optional<RoundPlayer> findByGameRound_RoundIdAndGamePlayer_GamePlayerId(Long roundId, Long gamePlayerId);
+    boolean existsByGameRound_RoundIdAndGamePlayer_GamePlayerId(Long roundId, Long gamePlayerId);
 }

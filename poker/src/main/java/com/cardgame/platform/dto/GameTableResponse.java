@@ -10,5 +10,6 @@ public record GameTableResponse(
         Long entryBet,
         Integer maxPlayers,
         String status,
+        boolean replayWaiting,
         List<TablePlayerResponse> players) {
 }

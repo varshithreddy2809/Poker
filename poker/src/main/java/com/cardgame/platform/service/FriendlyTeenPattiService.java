@@ -43,8 +43,9 @@ public class FriendlyTeenPattiService {
         if (table.getTableStatus() != GameTableStatus.OPEN) throw new GameRuleViolationException("Finish the current round before starting another one.");
         List<GamePlayer> participants = gamePlayerRepository.findByGameTable_TableIdAndPlayerStatusOrderBySeatNumber(tableId, GamePlayerStatus.JOINED);
         if (participants.size() < 2) throw new GameRuleViolationException("At least two players are needed to start.");
-        if (participants.stream().anyMatch(player -> !Boolean.TRUE.equals(player.getNextRoundReady()))) {
-            throw new GameRuleViolationException("All players must be ready before dealing cards.");
+        if (participants.stream().filter(player -> !player.getPlayer().getPlayerId().equals(table.getHostPlayer().getPlayerId()))
+                .anyMatch(player -> !Boolean.TRUE.equals(player.getNextRoundReady()))) {
+            throw new GameRuleViolationException("All players are not ready.");
         }
 
         GameRound round = new GameRound();
